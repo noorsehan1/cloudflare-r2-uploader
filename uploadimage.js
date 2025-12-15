@@ -2,162 +2,74 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // CORS preflight
     if (request.method === "OPTIONS") {
-      return handleCors(env);
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
+        }
+      });
     }
 
     if (url.pathname === "/upload" && request.method === "POST") {
-      return handleUpload(request, env);
+      return upload(request, env);
     }
 
     if (url.pathname === "/delete" && request.method === "POST") {
-      return handleDelete(request, env);
+      return del(request, env);
     }
 
-    return new Response(
-      "Not Found. Gunakan POST /upload atau /delete",
-      { status: 404 }
-    );
+    return new Response("Not Found", { status: 404 });
   }
 };
 
-// ===================== CORS =====================
-function handleCors(env) {
-  return new Response(null, {
+async function upload(request, env) {
+  if (request.headers.get("X-Auth-Key") !== env.UPLOAD_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  }
+
+  const form = await request.formData();
+  const file = form.get("file");
+  let fileName = form.get("fileName");
+
+  if (!file || !file.body) {
+    return new Response(JSON.stringify({ error: "File tidak valid" }), { status: 400 });
+  }
+
+  fileName = sanitize(fileName || file.name);
+
+  await env.R2_BUCKET_USERIMAGE.put(fileName, file.body, {
+    httpMetadata: { contentType: file.type }
+  });
+
+  return new Response(JSON.stringify({
+    success: true,
+    fileName: fileName
+  }), {
     headers: {
-      "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
-      "Access-Control-Max-Age": "86400"
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
     }
   });
 }
 
-// ===================== UPLOAD =====================
-async function handleUpload(request, env) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-    "Content-Type": "application/json"
-  };
-
-  try {
-    // AUTH
-    const auth = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    const formData = await request.formData();
-    const file = formData.get("file");
-    let fileName = formData.get("fileName"); // contoh: imageroom/foto.jpg
-
-    // ✅ FIX VALIDASI FILE
-    if (!(file instanceof File)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "File tidak valid" }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const bucket = env.R2_BUCKET_USERIMAGE;
-    if (!bucket) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
-
-    // ✅ FIX UTAMA: GUNAKAN stream()
-    await bucket.put(fileName, file.stream(), {
-      httpMetadata: {
-        contentType: file.type || "application/octet-stream"
-      }
-    });
-
-    const publicUrl =
-      `https://pub-${env.ACCOUNT_ID}.r2.dev/userimage/${encodeURIComponent(fileName)}`;
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        fileName,
-        publicUrl
-      }),
-      { status: 200, headers: corsHeaders }
-    );
-
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
-      { status: 500, headers: corsHeaders }
-    );
+async function del(request, env) {
+  if (request.headers.get("X-Auth-Key") !== env.UPLOAD_SECRET) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
+
+  const { fileName } = await request.json();
+  await env.R2_BUCKET_USERIMAGE.delete(fileName);
+
+  return new Response(JSON.stringify({ success: true }), {
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
 }
 
-// ===================== DELETE =====================
-async function handleDelete(request, env) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-    "Content-Type": "application/json"
-  };
-
-  try {
-    // AUTH
-    const auth = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: corsHeaders }
-      );
-    }
-
-    const data = await request.json();
-    const { fileName } = data;
-
-    if (!fileName) {
-      return new Response(
-        JSON.stringify({ success: false, error: "fileName kosong" }),
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const bucket = env.R2_BUCKET_USERIMAGE;
-    if (!bucket) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
-        { status: 500, headers: corsHeaders }
-      );
-    }
-
-    await bucket.delete(fileName);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "File berhasil dihapus",
-        fileName
-      }),
-      { status: 200, headers: corsHeaders }
-    );
-
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
-      { status: 500, headers: corsHeaders }
-    );
-  }
-}
-
-// ===================== UTIL =====================
 function sanitize(name) {
-  return name
-    .replace(/[^a-zA-Z0-9_\-./]/g, "_")
-    .replace(/\.\./g, "_")
-    .substring(0, 200);
+  return name.replace(/[^a-zA-Z0-9_\-./]/g, "_").replace(/\.\./g, "_");
 }
