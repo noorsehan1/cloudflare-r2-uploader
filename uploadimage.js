@@ -107,47 +107,49 @@ async function handleDelete(request, env) {
   };
 
   try {
-    // AUTH
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
 
-    const data = await request.json();
-    const subFolder = data.subFolder || "";
-    const fileName = data.fileName;
-
-    if (!fileName) {
-      return new Response(
-        JSON.stringify({ success: false, error: "fileName kosong" }),
-        { status: 400, headers }
-      );
+    const { publicUrl } = await request.json();
+    if (!publicUrl) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "publicUrl kosong"
+      }), { status: 400, headers });
     }
 
-    const fullPath = sanitize(
-      subFolder ? `${subFolder}/${fileName}` : fileName
-    );
+    // ===== AMBIL PATH DARI URL =====
+    const url = new URL(publicUrl);
 
-    await env.R2_BUCKET_USERIMAGE.delete(fullPath);
+    // hasil: /propil/tes.jpg
+    let filePath = decodeURIComponent(url.pathname);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        filePath: fullPath
-      }),
-      { status: 200, headers }
-    );
+    // hapus "/" depan
+    if (filePath.startsWith("/")) {
+      filePath = filePath.substring(1);
+    }
+
+    // DELETE DI R2
+    await env.R2_BUCKET_USERIMAGE.delete(filePath);
+
+    return new Response(JSON.stringify({
+      success: true,
+      filePath
+    }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
   }
 }
+
 
 // ===================== UTIL =====================
 function sanitize(name) {
@@ -156,3 +158,4 @@ function sanitize(name) {
     .replace(/\.\./g, "_")
     .substring(0, 200);
 }
+
