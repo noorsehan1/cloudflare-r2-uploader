@@ -1,28 +1,30 @@
 # wrangler.toml
-name = "my-r2-project"
-type = "javascript"  # or "webpack" / "rust" depending on your project
+name = "my-r2-project"       # Ganti sesuai nama projectmu
+type = "javascript"           # Bisa juga "webpack" atau "rust"
 
-account_id = "YOUR_ACCOUNT_ID"  # find this in your Cloudflare dashboard
+account_id = "YOUR_ACCOUNT_ID" # Ganti dengan Cloudflare Account ID-mu
 workers_dev = true
 compatibility_date = "2025-12-15"
 
-# Environment-specific variables (good for GitHub Actions)
+# Variabel global (opsional, untuk dev lokal)
 [vars]
 R2_BUCKET_NAME = "app-inventor-userimage"
-
-# You can set secrets instead of putting keys directly in wrangler.toml
-# Run these commands locally:
-# wrangler secret put R2_ACCESS_KEY
-# wrangler secret put R2_SECRET_KEY
-
-[triggers]
-# optional cron triggers
 
 [build]
 command = "npm install && npm run build"
 
+[triggers]
+# Tambahkan cron triggers jika perlu
+
+# Environment untuk development
+[env.dev]
+R2_ACCESS_KEY = "your-dev-access-key"       # Hanya jika dev lokal
+R2_SECRET_KEY = "your-dev-secret-key"
+R2_ENDPOINT = "https://de2fe7999306738ad5530a2fe8d6d09b.r2.cloudflarestorage.com"
+
+# Environment untuk production (GitHub Actions)
 [env.production]
-# Use GitHub Actions secrets for production
 R2_ACCESS_KEY = "${{ secrets.R2_ACCESS_KEY }}"
 R2_SECRET_KEY = "${{ secrets.R2_SECRET_KEY }}"
+R2_BUCKET_NAME = "app-inventor-userimage"
 R2_ENDPOINT = "https://de2fe7999306738ad5530a2fe8d6d09b.r2.cloudflarestorage.com"
