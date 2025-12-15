@@ -1,26 +1,17 @@
-// ===================== CLOUDRFARE R2 WORKER =====================
-// X-Auth-Key = env.UPLOAD_SECRET (misal: "alfiyan")
-// Mendukung upload dan delete file di bucket: feed, userimage, storage
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return handleCors(env);
 
-    if (url.pathname === "/upload" && request.method === "POST") {
-      return handleUpload(request, env);
-    }
+    if (url.pathname === "/upload" && request.method === "POST") return handleUpload(request, env);
 
-    if (url.pathname === "/delete" && request.method === "POST") {
-      return handleDelete(request, env);
-    }
+    if (url.pathname === "/delete" && request.method === "POST") return handleDelete(request, env);
 
     return new Response("Not Found. Gunakan POST /upload atau /delete", { status: 404 });
   }
 };
 
-// ===================== CORS =====================
 function handleCors(env) {
   return new Response(null, {
     headers: {
@@ -32,7 +23,7 @@ function handleCors(env) {
   });
 }
 
-// ===================== UPLOAD =====================
+// Upload ke satu bucket, tapi bisa pakai subfolder di fileName
 async function handleUpload(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -44,26 +35,25 @@ async function handleUpload(request, env) {
 
     const formData = await request.formData();
     const file = formData.get("file");
-    const fileName = formData.get("fileName");
-    const bucketName = formData.get("bucketName");
+    let fileName = formData.get("fileName"); // misal: "imageroom/tes.jpg"
 
     if (!file || !file.body) {
       return new Response(JSON.stringify({ success: false, error: "File tidak valid" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const r2Bucket = env[bucketName];
+    const r2Bucket = env.R2_BUCKET_USERIMAGE; // satu bucket tetap
     if (!r2Bucket) return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const finalName = sanitize(fileName || file.name || `upload-${Date.now()}`);
-    await r2Bucket.put(finalName, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+    fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
+
+    await r2Bucket.put(fileName, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
 
     return new Response(JSON.stringify({
       success: true,
-      fileName: finalName,
-      bucket: bucketName,
-      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${bucketName}/${encodeURIComponent(finalName)}`
+      fileName,
+      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/userimage/${encodeURIComponent(fileName)}`
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
@@ -72,7 +62,7 @@ async function handleUpload(request, env) {
   }
 }
 
-// ===================== DELETE =====================
+// Delete file dari bucket yang sama
 async function handleDelete(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -83,15 +73,15 @@ async function handleDelete(request, env) {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const data = await request.json();
-    const { fileName, bucketName } = data;
+    const { fileName } = data;
 
-    const r2Bucket = env[bucketName];
+    const r2Bucket = env.R2_BUCKET_USERIMAGE; // satu bucket tetap
     if (!r2Bucket) return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     await r2Bucket.delete(fileName);
 
-    return new Response(JSON.stringify({ success: true, message: "File dihapus", fileName, bucket: bucketName }),
+    return new Response(JSON.stringify({ success: true, message: "File dihapus", fileName }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
@@ -100,7 +90,7 @@ async function handleDelete(request, env) {
   }
 }
 
-// ===================== BANTUAN =====================
+// Sanitasi nama file / subfolder
 function sanitize(name) {
-  return name.replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
+  return name.replace(/[^a-zA-Z0-9_\-./()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
 }
