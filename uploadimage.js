@@ -23,7 +23,7 @@ function handleCors(env) {
   });
 }
 
-// Upload ke satu bucket, tapi bisa pakai subfolder di fileName
+// ===================== UPLOAD FILE =====================
 async function handleUpload(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -34,17 +34,26 @@ async function handleUpload(request, env) {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const formData = await request.formData();
+    const bucketName = formData.get("bucketName");
     const file = formData.get("file");
-    let fileName = formData.get("fileName"); // misal: "imageroom/tes.jpg"
+    let fileName = formData.get("fileName");
+
+    if (!bucketName) {
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak boleh kosong" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!file || !file.body) {
       return new Response(JSON.stringify({ success: false, error: "File tidak valid" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const r2Bucket = env.R2_BUCKET_USERIMAGE; // satu bucket tetap
-    if (!r2Bucket) return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // ambil bucket dinamis dari environment KV/R2 bindings
+    const r2Bucket = env[bucketName];
+    if (!r2Bucket) {
+      return new Response(JSON.stringify({ success: false, error: `Bucket ${bucketName} tidak ditemukan` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
 
@@ -52,8 +61,9 @@ async function handleUpload(request, env) {
 
     return new Response(JSON.stringify({
       success: true,
+      bucketName,
       fileName,
-      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/userimage/${encodeURIComponent(fileName)}`
+      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${bucketName}/${encodeURIComponent(fileName)}`
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
@@ -62,7 +72,7 @@ async function handleUpload(request, env) {
   }
 }
 
-// Delete file dari bucket yang sama
+// ===================== DELETE FILE =====================
 async function handleDelete(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -73,15 +83,22 @@ async function handleDelete(request, env) {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const data = await request.json();
-    const { fileName } = data;
+    const { bucketName, fileName } = data;
 
-    const r2Bucket = env.R2_BUCKET_USERIMAGE; // satu bucket tetap
-    if (!r2Bucket) return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!bucketName) {
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak boleh kosong" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const r2Bucket = env[bucketName];
+    if (!r2Bucket) {
+      return new Response(JSON.stringify({ success: false, error: `Bucket ${bucketName} tidak ditemukan` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     await r2Bucket.delete(fileName);
 
-    return new Response(JSON.stringify({ success: true, message: "File dihapus", fileName }),
+    return new Response(JSON.stringify({ success: true, message: "File dihapus", bucketName, fileName }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
@@ -90,7 +107,7 @@ async function handleDelete(request, env) {
   }
 }
 
-// Sanitasi nama file / subfolder
+// ===================== UTILITY =====================
 function sanitize(name) {
   return name.replace(/[^a-zA-Z0-9_\-./()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
 }
