@@ -3,13 +3,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
-        }
-      });
+      return cors(env);
     }
 
     if (url.pathname === "/upload" && request.method === "POST") {
@@ -17,59 +11,119 @@ export default {
     }
 
     if (url.pathname === "/delete" && request.method === "POST") {
-      return del(request, env);
+      return remove(request, env);
     }
 
     return new Response("Not Found", { status: 404 });
   }
 };
 
+// ================= CORS =================
+function cors(env) {
+  return new Response(null, {
+    headers: {
+      "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key"
+    }
+  });
+}
+
+// ================= UPLOAD =================
 async function upload(request, env) {
-  if (request.headers.get("X-Auth-Key") !== env.UPLOAD_SECRET) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+  const headers = {
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Content-Type": "application/json"
+  };
 
-  const form = await request.formData();
-  const file = form.get("file");
-  let fileName = form.get("fileName");
-
-  if (!file || !file.body) {
-    return new Response(JSON.stringify({ error: "File tidak valid" }), { status: 400 });
-  }
-
-  fileName = sanitize(fileName || file.name);
-
-  await env.R2_BUCKET_USERIMAGE.put(fileName, file.body, {
-    httpMetadata: { contentType: file.type }
-  });
-
-  return new Response(JSON.stringify({
-    success: true,
-    fileName: fileName
-  }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
+  try {
+    // AUTH
+    const auth = request.headers.get("X-Auth-Key");
+    if (auth !== env.UPLOAD_SECRET) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
-  });
+
+    const form = await request.formData();
+    const file = form.get("file");
+    let fileName = form.get("fileName");
+
+    // VALIDASI FILE (BENAR)
+    if (!(file instanceof File)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "File tidak valid"
+      }), { status: 400, headers });
+    }
+
+    fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
+
+    const buffer = await file.arrayBuffer();
+
+    await env.R2_BUCKET_USERIMAGE.put(fileName, buffer, {
+      httpMetadata: {
+        contentType: file.type || "application/octet-stream"
+      }
+    });
+
+    return new Response(JSON.stringify({
+      success: true,
+      fileName
+    }), { status: 200, headers });
+
+  } catch (e) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
+  }
 }
 
-async function del(request, env) {
-  if (request.headers.get("X-Auth-Key") !== env.UPLOAD_SECRET) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+// ================= DELETE =================
+async function remove(request, env) {
+  const headers = {
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Content-Type": "application/json"
+  };
 
-  const { fileName } = await request.json();
-  await env.R2_BUCKET_USERIMAGE.delete(fileName);
-
-  return new Response(JSON.stringify({ success: true }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*"
+  try {
+    const auth = request.headers.get("X-Auth-Key");
+    if (auth !== env.UPLOAD_SECRET) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
-  });
+
+    const { fileName } = await request.json();
+
+    if (!fileName) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "fileName kosong"
+      }), { status: 400, headers });
+    }
+
+    await env.R2_BUCKET_USERIMAGE.delete(fileName);
+
+    return new Response(JSON.stringify({
+      success: true
+    }), { status: 200, headers });
+
+  } catch (e) {
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
+  }
 }
 
+// ================= UTIL =================
 function sanitize(name) {
-  return name.replace(/[^a-zA-Z0-9_\-./]/g, "_").replace(/\.\./g, "_");
+  return name
+    .replace(/[^a-zA-Z0-9_\-./]/g, "_")
+    .replace(/\.\./g, "_")
+    .substring(0, 200);
 }
