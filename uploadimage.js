@@ -1,5 +1,5 @@
 // ===================== CLOUDRFARE R2 WORKER =====================
-// Worker ini menangani upload dan delete file di bucket R2
+// Worker menangani upload dan delete file di bucket R2
 // X-Auth-Key = env.UPLOAD_SECRET
 // CORS sesuai env.ALLOWED_ORIGIN
 
@@ -7,17 +7,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Handle CORS preflight
     if (request.method === "OPTIONS") {
       return handleCorsPreflight(env);
     }
 
-    // Handle upload
     if (url.pathname === "/upload" && request.method === "POST") {
       return handleUpload(request, env);
     }
 
-    // Handle delete
     if (url.pathname === "/delete" && request.method === "POST") {
       return handleDelete(request, env);
     }
@@ -41,6 +38,7 @@ function handleCorsPreflight(env) {
 // ===================== UPLOAD =====================
 async function handleUpload(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+
   try {
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
@@ -50,27 +48,30 @@ async function handleUpload(request, env) {
     const formData = await request.formData();
     const file = formData.get("file");
     const fileName = formData.get("fileName");
-    const bucketName = formData.get("bucketName");
+    const bucketName = formData.get("bucketName"); // feed, userimage, storage
 
     if (!file || typeof file === "string") {
       return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // Mapping nama bucket client ke binding R2
-    let r2Bucket;
-    switch ((bucketName || "").toLowerCase()) {
-      case "feed": r2Bucket = env.R2_BUCKET_FEED; break;
-      case "userimage": r2Bucket = env.R2_BUCKET_USERIMAGE; break;
-      case "storage": r2Bucket = env.R2_BUCKET_STORAGE; break;
-      default:
-        return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const r2Bucket = env[`R2_BUCKET_${bucketName.toUpperCase()}`];
+    if (!r2Bucket) {
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Simpan file di folder sesuai bucket
     const finalFileName = sanitizeFileName(fileName || file.name || `upload-${Date.now()}`);
-    const arrayBuffer = await file.arrayBuffer(); // pastikan file tidak 0 KB
-    await r2Bucket.put(finalFileName, arrayBuffer, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+    const objectKey = `${bucketName}/${finalFileName}`;
 
-    return new Response(JSON.stringify({ success: true, message: "Upload berhasil!", fileName: finalFileName, bucket: bucketName }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    await r2Bucket.put(objectKey, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: "Upload berhasil!",
+      fileName: finalFileName,
+      bucket: bucketName,
+      url: `https://pub-${env.ACCOUNT_ID}.r2.dev/${objectKey}`
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
     return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -80,6 +81,7 @@ async function handleUpload(request, env) {
 // ===================== DELETE =====================
 async function handleDelete(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+
   try {
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
@@ -89,17 +91,12 @@ async function handleDelete(request, env) {
     const data = await request.json();
     const { fileName, bucketName } = data;
 
-    // Mapping nama bucket client ke binding R2
-    let r2Bucket;
-    switch ((bucketName || "").toLowerCase()) {
-      case "feed": r2Bucket = env.R2_BUCKET_FEED; break;
-      case "userimage": r2Bucket = env.R2_BUCKET_USERIMAGE; break;
-      case "storage": r2Bucket = env.R2_BUCKET_STORAGE; break;
-      default:
-        return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const r2Bucket = env[`R2_BUCKET_${bucketName.toUpperCase()}`];
+    if (!r2Bucket) {
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    await r2Bucket.delete(fileName);
+    await r2Bucket.delete(`${bucketName}/${fileName}`);
 
     return new Response(JSON.stringify({ success: true, message: "File berhasil dihapus", fileName, bucket: bucketName }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
