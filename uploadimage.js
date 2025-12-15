@@ -1,26 +1,26 @@
 // ===================== KONFIGURASI =====================
-// HARUS diatur di Dashboard Worker → Settings → Variables
-// Binding bucket R2:
-  // R2_BUCKET_FEED      → feed
-  // R2_BUCKET_USERIMAGE → userimage
-  // R2_BUCKET_STORAGE   → storage
+// Worker akan membutuhkan binding bucket di Dashboard Worker:
+// R2_BUCKET_FEED      → feed
+// R2_BUCKET_USERIMAGE → userimage
+// R2_BUCKET_STORAGE   → storage
 // UPLOAD_SECRET = "alfiyan"
-// ALLOWED_ORIGIN = "*" atau domain App Inventor
+// ALLOWED_ORIGIN = "*"  (atau domain App Inventor)
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // CORS preflight
+    // 1️⃣ Handle CORS preflight
     if (request.method === "OPTIONS") {
       return handleCorsPreflight(request, env);
     }
 
-    // Upload POST
+    // 2️⃣ Upload POST
     if (url.pathname === "/upload" && request.method === "POST") {
       return handleUpload(request, env);
     }
 
+    // 3️⃣ Lainnya
     return new Response("Not Found. Gunakan POST /upload", { status: 404 });
   }
 };
@@ -39,12 +39,10 @@ function handleCorsPreflight(request, env) {
 
 // ===================== FUNGSI UPLOAD =====================
 async function handleUpload(request, env) {
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
-  };
+  const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
   try {
-    // 1️⃣ Verifikasi autentikasi
+    // 🔒 Verifikasi secret
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
       return new Response(
@@ -53,7 +51,7 @@ async function handleUpload(request, env) {
       );
     }
 
-    // 2️⃣ Parse form data
+    // 🔹 Parse form data
     const formData = await request.formData();
     const file = formData.get("file");
     const fileName = formData.get("fileName");
@@ -66,40 +64,31 @@ async function handleUpload(request, env) {
       );
     }
 
-    // 3️⃣ Tentukan nama file
+    // 🔹 Tentukan nama file
     const finalFileName = fileName && fileName.trim() !== "" 
       ? sanitizeFileName(fileName.trim()) 
       : sanitizeFileName(file.name || `upload-${Date.now()}`);
 
-    const objectKey = finalFileName;
-
-    // 4️⃣ Pilih bucket sesuai bucketPath
+    // 🔹 Pilih bucket
     let bucket;
     switch(bucketPath) {
-      case "feed":
-        bucket = env.R2_BUCKET_FEED;
-        break;
-      case "storage":
-        bucket = env.R2_BUCKET_STORAGE;
-        break;
+      case "feed": bucket = env.R2_BUCKET_FEED; break;
+      case "storage": bucket = env.R2_BUCKET_STORAGE; break;
       case "userimage":
-      default:
-        bucket = env.R2_BUCKET_USERIMAGE;
-        break;
+      default: bucket = env.R2_BUCKET_USERIMAGE; break;
     }
 
-    // 5️⃣ Upload file ke bucket
-    await bucket.put(objectKey, file.body, {
+    // 🔹 Upload ke R2
+    await bucket.put(finalFileName, file.body, {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
 
-    // 6️⃣ Respons sukses
+    // 🔹 Respons sukses
     return new Response(
       JSON.stringify({
         success: true,
         message: "Upload berhasil!",
         fileName: finalFileName,
-        objectKey: objectKey,
         bucket: bucketPath
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -114,7 +103,7 @@ async function handleUpload(request, env) {
   }
 }
 
-// ===================== FUNGSI BANTUAN =====================
+// ===================== BANTUAN =====================
 function sanitizeFileName(fileName) {
   return fileName
     .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
