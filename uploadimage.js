@@ -1,10 +1,11 @@
 // ===================== KONFIGURASI =====================
-// HARUS diatur di Dashboard Worker -> Settings -> Variables
-// R2_BUCKET_FEED      → binding ke bucket feed
-// R2_BUCKET_USERIMAGE → binding ke bucket userimage
-// R2_BUCKET_STORAGE   → binding ke bucket storage
-// UPLOAD_SECRET       → kata sandi sederhana untuk autentikasi
-// ALLOWED_ORIGIN      → asal untuk CORS, misal "*" untuk development
+// HARUS diatur di Dashboard Worker → Settings → Variables
+// Binding bucket R2:
+  // R2_BUCKET_FEED      → feed
+  // R2_BUCKET_USERIMAGE → userimage
+  // R2_BUCKET_STORAGE   → storage
+// UPLOAD_SECRET = "alfiyan"
+// ALLOWED_ORIGIN = "*" atau domain App Inventor
 
 export default {
   async fetch(request, env) {
@@ -20,7 +21,6 @@ export default {
       return handleUpload(request, env);
     }
 
-    // Default
     return new Response("Not Found. Gunakan POST /upload", { status: 404 });
   }
 };
@@ -71,7 +71,7 @@ async function handleUpload(request, env) {
       ? sanitizeFileName(fileName.trim()) 
       : sanitizeFileName(file.name || `upload-${Date.now()}`);
 
-    const objectKey = finalFileName; // nama file di bucket, path di bucketPath
+    const objectKey = finalFileName;
 
     // 4️⃣ Pilih bucket sesuai bucketPath
     let bucket;
@@ -117,7 +117,7 @@ async function handleUpload(request, env) {
 // ===================== FUNGSI BANTUAN =====================
 function sanitizeFileName(fileName) {
   return fileName
-    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")  // karakter aman
-    .replace(/\.\./g, "_")                     // blok path traversal
-    .substring(0, 200);                        // batasi panjang
+    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
+    .replace(/\.\./g, "_")
+    .substring(0, 200);
 }
