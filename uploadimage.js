@@ -2,112 +2,160 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") return handleCors(env);
+    // CORS preflight
+    if (request.method === "OPTIONS") {
+      return handleCors(env);
+    }
 
-    if (url.pathname === "/upload" && request.method === "POST") return handleUpload(request, env);
+    if (url.pathname === "/upload" && request.method === "POST") {
+      return handleUpload(request, env);
+    }
 
-    if (url.pathname === "/delete" && request.method === "POST") return handleDelete(request, env);
+    if (url.pathname === "/delete" && request.method === "POST") {
+      return handleDelete(request, env);
+    }
 
-    return new Response("Not Found. Gunakan POST /upload atau /delete", { status: 404 });
+    return new Response(
+      "Not Found. Gunakan POST /upload atau /delete",
+      { status: 404 }
+    );
   }
 };
 
+// ===================== CORS =====================
 function handleCors(env) {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
-      "Access-Control-Max-Age": "86400",
+      "Access-Control-Max-Age": "86400"
     }
   });
 }
 
-// ===================== UPLOAD FILE =====================
+// ===================== UPLOAD =====================
 async function handleUpload(request, env) {
-  const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Content-Type": "application/json"
+  };
 
   try {
+    // AUTH
     const auth = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET)
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
 
     const formData = await request.formData();
-    const bucketName = formData.get("bucketName");
     const file = formData.get("file");
-    let fileName = formData.get("fileName");
-
-    if (!bucketName) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak boleh kosong" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    let fileName = formData.get("fileName"); // contoh: imageroom/foto.jpg
 
     if (!file || !file.body) {
-      return new Response(JSON.stringify({ success: false, error: "File tidak valid" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(
+        JSON.stringify({ success: false, error: "File tidak valid" }),
+        { status: 400, headers: corsHeaders }
+      );
     }
 
-    // ambil bucket dinamis dari environment KV/R2 bindings
-    const r2Bucket = env[bucketName];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: `Bucket ${bucketName} tidak ditemukan` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const bucket = env.R2_BUCKET_USERIMAGE;
+    if (!bucket) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
+        { status: 500, headers: corsHeaders }
+      );
     }
 
     fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
 
-    await r2Bucket.put(fileName, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+    await bucket.put(fileName, file.body, {
+      httpMetadata: {
+        contentType: file.type || "application/octet-stream"
+      }
+    });
 
-    return new Response(JSON.stringify({
-      success: true,
-      bucketName,
-      fileName,
-      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${bucketName}/${encodeURIComponent(fileName)}`
-    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const publicUrl =
+      `https://pub-${env.ACCOUNT_ID}.r2.dev/userimage/${encodeURIComponent(fileName)}`;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        fileName,
+        publicUrl
+      }),
+      { status: 200, headers: corsHeaders }
+    );
 
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
 
-// ===================== DELETE FILE =====================
+// ===================== DELETE =====================
 async function handleDelete(request, env) {
-  const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+    "Content-Type": "application/json"
+  };
 
   try {
+    // AUTH
     const auth = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET)
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
 
     const data = await request.json();
-    const { bucketName, fileName } = data;
+    const { fileName } = data;
 
-    if (!bucketName) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak boleh kosong" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!fileName) {
+      return new Response(
+        JSON.stringify({ success: false, error: "fileName kosong" }),
+        { status: 400, headers: corsHeaders }
+      );
     }
 
-    const r2Bucket = env[bucketName];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: `Bucket ${bucketName} tidak ditemukan` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const bucket = env.R2_BUCKET_USERIMAGE;
+    if (!bucket) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
+        { status: 500, headers: corsHeaders }
+      );
     }
 
-    await r2Bucket.delete(fileName);
+    await bucket.delete(fileName);
 
-    return new Response(JSON.stringify({ success: true, message: "File dihapus", bucketName, fileName }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "File berhasil dihapus",
+        fileName
+      }),
+      { status: 200, headers: corsHeaders }
+    );
 
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ success: false, error: err.message || "Unknown error" }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 }
 
-// ===================== UTILITY =====================
+// ===================== UTIL =====================
 function sanitize(name) {
-  return name.replace(/[^a-zA-Z0-9_\-./()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
+  return name
+    .replace(/[^a-zA-Z0-9_\-./]/g, "_")
+    .replace(/\.\./g, "_")
+    .substring(0, 200);
 }
