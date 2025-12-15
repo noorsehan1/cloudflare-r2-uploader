@@ -51,7 +51,7 @@ async function handleUpload(request, env) {
     const formData = await request.formData();
     const file = formData.get("file");
     const fileName = formData.get("fileName");
-    const bucketName = formData.get("bucketName"); // Harus: "R2_BUCKET_FEED", "R2_BUCKET_USERIMAGE", "R2_BUCKET_STORAGE"
+    const bucketShortName = (formData.get("bucketName") || "").toLowerCase(); // feed, userimage, storage
 
     if (!file || typeof file === "string") {
       return new Response(
@@ -60,13 +60,23 @@ async function handleUpload(request, env) {
       );
     }
 
-    // Ambil bucket dari binding
-    const r2Bucket = env[bucketName];
-    if (!r2Bucket) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Map nama pendek bucket ke binding R2 yang benar
+    let r2Bucket;
+    switch (bucketShortName) {
+      case "feed":
+        r2Bucket = env.R2_BUCKET_FEED;
+        break;
+      case "userimage":
+        r2Bucket = env.R2_BUCKET_USERIMAGE;
+        break;
+      case "storage":
+        r2Bucket = env.R2_BUCKET_STORAGE;
+        break;
+      default:
+        return new Response(
+          JSON.stringify({ success: false, error: "Bucket tidak valid" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
     }
 
     // Tentukan nama file akhir
@@ -84,7 +94,7 @@ async function handleUpload(request, env) {
         message: "Upload berhasil!",
         fileName: finalFileName,
         objectKey: objectKey,
-        bucket: bucketName,
+        bucket: bucketShortName,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -100,7 +110,7 @@ async function handleUpload(request, env) {
 // ===================== FUNGSI BANTUAN =====================
 function sanitizeFileName(name) {
   return name
-    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_") // hanya karakter aman
-    .replace(/\.\./g, "_")                     // blok path traversal
-    .substring(0, 200);                        // batasi panjang nama
+    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
+    .replace(/\.\./g, "_")
+    .substring(0, 200);
 }
