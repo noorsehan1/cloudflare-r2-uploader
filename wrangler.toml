@@ -4,15 +4,21 @@ account_id = "de2fe7999306738ad5530a2fe8d6d09b"
 workers_dev = true
 compatibility_date = "2025-12-15"
 
-# Entry point Worker
 main = "uploadimage.js"
 
-# Environment variables
 [vars]
 UPLOAD_SECRET = "alfiyan"
 ALLOWED_ORIGIN = "*"
 
-# R2 Bucket bindings
-R2_BUCKET_FEED = "feed"
-R2_BUCKET_USERIMAGE = "userimage"
-R2_BUCKET_STORAGE = "storage"
+[bindings]
+type = "r2_bucket"
+name = "R2_BUCKET_FEED"
+bucket_name = "feed"
+
+type = "r2_bucket"
+name = "R2_BUCKET_USERIMAGE"
+bucket_name = "userimage"
+
+type = "r2_bucket"
+name = "R2_BUCKET_STORAGE"
+bucket_name = "storage"
