@@ -7,24 +7,17 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") {
-      return handleCorsPreflight(env);
-    }
+    if (request.method === "OPTIONS") return handleCors(env);
 
-    if (url.pathname === "/upload" && request.method === "POST") {
-      return handleUpload(request, env);
-    }
-
-    if (url.pathname === "/delete" && request.method === "POST") {
-      return handleDelete(request, env);
-    }
+    if (url.pathname === "/upload" && request.method === "POST") return handleUpload(request, env);
+    if (url.pathname === "/delete" && request.method === "POST") return handleDelete(request, env);
 
     return new Response("Not Found. Gunakan POST /upload atau /delete", { status: 404 });
   },
 };
 
 // ===================== CORS =====================
-function handleCorsPreflight(env) {
+function handleCors(env) {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -37,31 +30,27 @@ function handleCorsPreflight(env) {
 
 // ===================== UPLOAD =====================
 async function handleUpload(request, env) {
-  const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+  const headers = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
   try {
-    const authHeader = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const auth = request.headers.get("X-Auth-Key");
+    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET)
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
 
     const formData = await request.formData();
     const file = formData.get("file");
     const fileName = formData.get("fileName");
-    const bucketName = formData.get("bucketName"); // feed, userimage, storage
+    const bucketName = formData.get("bucketName");
 
-    if (!file || typeof file === "string") {
-      return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    if (!file || typeof file === "string") 
+      return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers });
 
-    const r2Bucket = env[`R2_BUCKET_${bucketName.toUpperCase()}`];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const r2Bucket = env[bucketName];
+    if (!r2Bucket)
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers });
 
-    // Simpan file di folder sesuai bucket
     const finalFileName = sanitizeFileName(fileName || file.name || `upload-${Date.now()}`);
-    const objectKey = `${bucketName}/${finalFileName}`;
+    const objectKey = `${bucketName}/${finalFileName}`; // ✅ taruh file di folder bucket
 
     await r2Bucket.put(objectKey, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
 
@@ -70,45 +59,39 @@ async function handleUpload(request, env) {
       message: "Upload berhasil!",
       fileName: finalFileName,
       bucket: bucketName,
-      url: `https://pub-${env.ACCOUNT_ID}.r2.dev/${objectKey}`
-    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
+      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${objectKey}`
+    }), { status: 200, headers });
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers });
   }
 }
 
 // ===================== DELETE =====================
 async function handleDelete(request, env) {
-  const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
+  const headers = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
   try {
-    const authHeader = request.headers.get("X-Auth-Key");
-    if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const auth = request.headers.get("X-Auth-Key");
+    if (!env.UPLOAD_SECRET || auth !== env.UPLOAD_SECRET)
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
 
     const data = await request.json();
     const { fileName, bucketName } = data;
 
-    const r2Bucket = env[`R2_BUCKET_${bucketName.toUpperCase()}`];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+    const r2Bucket = env[bucketName];
+    if (!r2Bucket)
+      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers });
 
-    await r2Bucket.delete(`${bucketName}/${fileName}`);
+    const objectKey = `${bucketName}/${fileName}`;
+    await r2Bucket.delete(objectKey);
 
-    return new Response(JSON.stringify({ success: true, message: "File berhasil dihapus", fileName, bucket: bucketName }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
+    return new Response(JSON.stringify({ success: true, message: "File berhasil dihapus", fileName, bucketName }), { status: 200, headers });
   } catch (err) {
-    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers });
   }
 }
 
-// ===================== BANTUAN =====================
+// ===================== HELPERS =====================
 function sanitizeFileName(name) {
-  return name
-    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
-    .replace(/\.\./g, "_")
-    .substring(0, 200);
+  return name.replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
 }
