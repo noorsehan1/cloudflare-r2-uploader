@@ -1,8 +1,3 @@
-// ===================== CLOUDRFARE R2 WORKER =====================
-// Worker menangani upload dan delete file di bucket R2
-// X-Auth-Key = env.UPLOAD_SECRET
-// CORS sesuai env.ALLOWED_ORIGIN
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -16,7 +11,6 @@ export default {
   },
 };
 
-// ===================== CORS =====================
 function handleCors(env) {
   return new Response(null, {
     headers: {
@@ -28,7 +22,6 @@ function handleCors(env) {
   });
 }
 
-// ===================== UPLOAD =====================
 async function handleUpload(request, env) {
   const headers = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -50,23 +43,20 @@ async function handleUpload(request, env) {
       return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers });
 
     const finalFileName = sanitizeFileName(fileName || file.name || `upload-${Date.now()}`);
-    const objectKey = `${bucketName}/${finalFileName}`; // ✅ taruh file di folder bucket
-
-    await r2Bucket.put(objectKey, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+    await r2Bucket.put(finalFileName, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
 
     return new Response(JSON.stringify({
       success: true,
       message: "Upload berhasil!",
       fileName: finalFileName,
       bucket: bucketName,
-      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${objectKey}`
+      publicUrl: `https://pub-${env.ACCOUNT_ID}.r2.dev/${finalFileName}`
     }), { status: 200, headers });
   } catch (err) {
     return new Response(JSON.stringify({ success: false, error: err.message || "Unknown error" }), { status: 500, headers });
   }
 }
 
-// ===================== DELETE =====================
 async function handleDelete(request, env) {
   const headers = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
@@ -82,8 +72,7 @@ async function handleDelete(request, env) {
     if (!r2Bucket)
       return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers });
 
-    const objectKey = `${bucketName}/${fileName}`;
-    await r2Bucket.delete(objectKey);
+    await r2Bucket.delete(fileName);
 
     return new Response(JSON.stringify({ success: true, message: "File berhasil dihapus", fileName, bucketName }), { status: 200, headers });
   } catch (err) {
@@ -91,7 +80,6 @@ async function handleDelete(request, env) {
   }
 }
 
-// ===================== HELPERS =====================
 function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
 }
