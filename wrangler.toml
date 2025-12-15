@@ -9,6 +9,7 @@ main = "uploadimage.js"
 [vars]
 UPLOAD_SECRET = "alfiyan"
 ALLOWED_ORIGIN = "*"
+ACCOUNT_ID = "de2fe7999306738ad5530a2fe8d6d09b"
 
 [[r2_buckets]]
 binding = "R2_BUCKET_USERIMAGE"
