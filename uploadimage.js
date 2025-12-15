@@ -55,7 +55,8 @@ async function handleUpload(request, env) {
     const file = formData.get("file");
     let fileName = formData.get("fileName"); // contoh: imageroom/foto.jpg
 
-    if (!file || !file.body) {
+    // ✅ FIX VALIDASI FILE
+    if (!(file instanceof File)) {
       return new Response(
         JSON.stringify({ success: false, error: "File tidak valid" }),
         { status: 400, headers: corsHeaders }
@@ -72,7 +73,8 @@ async function handleUpload(request, env) {
 
     fileName = sanitize(fileName || file.name || `upload-${Date.now()}`);
 
-    await bucket.put(fileName, file.body, {
+    // ✅ FIX UTAMA: GUNAKAN stream()
+    await bucket.put(fileName, file.stream(), {
       httpMetadata: {
         contentType: file.type || "application/octet-stream"
       }
