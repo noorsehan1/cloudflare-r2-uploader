@@ -100,6 +100,7 @@ async function handleUpload(request, env) {
 }
 
 // ===================== DELETE =====================
+// ===================== DELETE =====================
 async function handleDelete(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -109,44 +110,42 @@ async function handleDelete(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Unauthorized"
-      }), { status: 401, headers });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers }
+      );
     }
 
-    const { publicUrl } = await request.json();
-    if (!publicUrl) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "publicUrl kosong"
-      }), { status: 400, headers });
+    const { folder, fileName } = await request.json();
+
+    if (!fileName) {
+      return new Response(
+        JSON.stringify({ success: false, error: "fileName kosong" }),
+        { status: 400, headers }
+      );
     }
 
-    // ===== AMBIL PATH DARI URL =====
-    const url = new URL(publicUrl);
-
-    // hasil: /propil/tes.jpg
-    let filePath = decodeURIComponent(url.pathname);
-
-    // hapus "/" depan
-    if (filePath.startsWith("/")) {
-      filePath = filePath.substring(1);
-    }
+    // GABUNG PATH
+    const filePath = sanitize(
+      folder ? `${folder}/${fileName}` : fileName
+    );
 
     // DELETE DI R2
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
-    return new Response(JSON.stringify({
-      success: true,
-      filePath
-    }), { status: 200, headers });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        filePath
+      }),
+      { status: 200, headers }
+    );
 
   } catch (e) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: e.message
-    }), { status: 500, headers });
+    return new Response(
+      JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers }
+    );
   }
 }
 
@@ -158,4 +157,5 @@ function sanitize(name) {
     .replace(/\.\./g, "_")
     .substring(0, 200);
 }
+
 
