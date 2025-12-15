@@ -11,13 +11,5 @@ UPLOAD_SECRET = "alfiyan"
 ALLOWED_ORIGIN = "*"
 
 [[r2_buckets]]
-binding = "R2_BUCKET_FEED"
-bucket_name = "feed"
-
-[[r2_buckets]]
 binding = "R2_BUCKET_USERIMAGE"
 bucket_name = "userimage"
-
-[[r2_buckets]]
-binding = "R2_BUCKET_STORAGE"
-bucket_name = "storage"
