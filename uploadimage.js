@@ -1,31 +1,14 @@
-// ===================== KONFIGURASI =====================
-// Variabel harus diset di Dashboard Worker -> Settings -> Variables
-// UPLOAD_SECRET = "alfiyan"
-// ALLOWED_ORIGIN = "*" atau domain asal aplikasi
-// Bindings ke R2 bucket:
-//   R2_BUCKET_FEED
-//   R2_BUCKET_USERIMAGE
-//   R2_BUCKET_STORAGE
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // HANDLE CORS PREFLIGHT
-    if (request.method === "OPTIONS") {
-      return handleCorsPreflight(env);
-    }
-
-    // HANDLE UPLOAD
-    if (url.pathname === "/upload" && request.method === "POST") {
-      return handleUpload(request, env);
-    }
+    if (request.method === "OPTIONS") return handleCorsPreflight(env);
+    if (url.pathname === "/upload" && request.method === "POST") return handleUpload(request, env);
 
     return new Response("Not Found. Gunakan POST /upload", { status: 404 });
   }
 };
 
-// ===================== FUNGSI CORS =====================
 function handleCorsPreflight(env) {
   return new Response(null, {
     headers: {
@@ -37,84 +20,46 @@ function handleCorsPreflight(env) {
   });
 }
 
-// ===================== FUNGSI UPLOAD =====================
 async function handleUpload(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
 
   try {
-    // AUTHENTIKASI
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: Token tidak valid" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized: Token tidak valid" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // PARSE FORM DATA
     const formData = await request.formData();
     const file = formData.get("file");
     const fileName = formData.get("fileName");
-    const bucketName = formData.get("bucketName"); // "feed", "userimage", atau "storage"
+    const bucketName = formData.get("bucketName");
 
     if (!file || typeof file === "string") {
-      return new Response(
-        JSON.stringify({ success: false, error: "File tidak valid" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // VALIDASI NAMA BUCKET
     let r2Bucket;
     switch ((bucketName || "").toLowerCase()) {
-      case "feed":
-        r2Bucket = env.R2_BUCKET_FEED;
-        break;
-      case "userimage":
-        r2Bucket = env.R2_BUCKET_USERIMAGE;
-        break;
-      case "storage":
-        r2Bucket = env.R2_BUCKET_STORAGE;
-        break;
+      case "feed": r2Bucket = env.R2_BUCKET_FEED; break;
+      case "userimage": r2Bucket = env.R2_BUCKET_USERIMAGE; break;
+      case "storage": r2Bucket = env.R2_BUCKET_STORAGE; break;
       default:
-        return new Response(
-          JSON.stringify({ success: false, error: "Bucket tidak valid" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ success: false, error: "Bucket tidak valid" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // TENTUKAN NAMA FILE
     const finalFileName = fileName && fileName.trim() !== "" ? sanitizeFileName(fileName.trim()) : sanitizeFileName(file.name || `upload-${Date.now()}`);
     const objectKey = finalFileName;
 
-    // UPLOAD KE R2
     await r2Bucket.put(objectKey, file.body, {
       httpMetadata: { contentType: file.type || "application/octet-stream" },
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Upload berhasil!",
-        fileName: finalFileName,
-        objectKey: objectKey,
-        bucket: bucketName
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
+    return new Response(JSON.stringify({ success: true, message: "Upload berhasil!", fileName: finalFileName, objectKey, bucket: bucketName }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ success: false, error: `Upload gagal: ${error.message || "Unknown error"}` }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: false, error: `Upload gagal: ${error.message || "Unknown error"}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 }
 
-// ===================== FUNGSI BANTUAN =====================
 function sanitizeFileName(fileName) {
-  return fileName
-    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
-    .replace(/\.\./g, "_")
-    .substring(0, 200);
+  return fileName.replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_").replace(/\.\./g, "_").substring(0, 200);
 }
