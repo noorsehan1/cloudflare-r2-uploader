@@ -1,15 +1,17 @@
 name = "cloudflare-r2-uploader"
-type = "javascript"
-
-account_id = "YOUR_ACCOUNT_ID"  # ganti dengan Cloudflare Account ID
+account_id = "de2fe7999306738ad5530a2fe8d6d09b"
 workers_dev = true
 compatibility_date = "2025-12-15"
 
 [vars]
-R2_BUCKET_NAME = "app-inventor-userimage"
+R2_BUCKET_FEED = "feed"
+R2_BUCKET_USERIMAGE = "userimage"
+R2_BUCKET_STORAGE = "storage"
 
 [env.production]
 R2_ACCESS_KEY = "${{ secrets.R2_ACCESS_KEY }}"
 R2_SECRET_KEY = "${{ secrets.R2_SECRET_KEY }}"
-R2_BUCKET_NAME = "app-inventor-userimage"
-R2_ENDPOINT = "https://de2fe7999306738ad5530a2fe8d6d09b.r2.cloudflarestorage.com"
+R2_BUCKET_FEED = "feed"
+R2_BUCKET_USERIMAGE = "userimage"
+R2_BUCKET_STORAGE = "storage"
+R2_ENDPOINT = "https://<YOUR_BUCKET_ENDPOINT>.r2.cloudflarestorage.com"
