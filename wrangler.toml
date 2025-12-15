@@ -3,10 +3,12 @@ type = "javascript"
 account_id = "de2fe7999306738ad5530a2fe8d6d09b"
 workers_dev = true
 compatibility_date = "2025-12-15"
+
 main = "uploadimage.js"
 
 [vars]
 UPLOAD_SECRET = "alfiyan"
+ALLOWED_ORIGIN = "*"
 
 [[r2_buckets]]
 binding = "R2_BUCKET_USERIMAGE"
