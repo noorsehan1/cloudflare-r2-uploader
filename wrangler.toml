@@ -5,7 +5,7 @@ workers_dev = true
 compatibility_date = "2025-12-15"
 
 # Entry-point Worker JS
-main = "index.js"  # <-- file utama Worker
+main = "uploadimage.js"  # <-- file utama Worker
 
 # ===================== VARIABEL GLOBAL =====================
 [vars]
@@ -34,3 +34,4 @@ command = "npm install && npm run build"
 # ===================== ASSETS (opsional) =====================
 [assets]
 directory = "./dist"  # Hanya jika ada file statis, misal HTML/JS/CSS
+
