@@ -1,0 +1,129 @@
+// ===================== KONFIGURASI =====================
+// Variabel ini HARUS diatur di Dashboard Worker -> Settings -> Variables
+// 1. R2_BUCKET: Binding ke bucket R2 Anda (misal: MY_BUCKET)
+// 2. UPLOAD_SECRET: Kata sandi sederhana untuk mengamankan endpoint (buat string acak yang panjang)
+// 3. ALLOWED_ORIGIN: Asal yang diizinkan untuk CORS (misal: "https://your-app.domain" atau "*" untuk development)
+
+// ===================== FUNGSI UTAMA =====================
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // [1] HANDLE CORS PREFLIGHT (OPTIONS) REQUEST
+    if (request.method === "OPTIONS") {
+      return handleCorsPreflight(request, env);
+    }
+
+    // [2] HANDLE UPLOAD REQUEST (POST)
+    if (url.pathname === "/upload" && request.method === "POST") {
+      return handleUpload(request, env);
+    }
+
+    // [3] RESPONS UNTUK RUTE LAIN
+    return new Response("Not Found. Gunakan POST /upload", { status: 404 });
+  }
+};
+
+// ===================== FUNGSI CORS =====================
+function handleCorsPreflight(request, env) {
+  return new Response(null, {
+    headers: {
+      "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-Auth-Key",
+      "Access-Control-Max-Age": "86400",
+    }
+  });
+}
+
+// ===================== FUNGSI UPLOAD =====================
+async function handleUpload(request, env) {
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+  };
+
+  try {
+    // [1] VERIFIKASI AUTHENTIKASI
+    const authHeader = request.headers.get("X-Auth-Key");
+    if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized: Token tidak valid atau tidak disetel" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // [2] PARSE FORM DATA
+    const formData = await request.formData();
+    const file = formData.get("file");        // File dari input "file"
+    const fileName = formData.get("fileName"); // Nama file custom (opsional)
+    const bucketPath = formData.get("bucketPath") || ""; // Subfolder dalam bucket (opsional)
+
+    if (!file || typeof file === "string") {
+      return new Response(
+        JSON.stringify({ success: false, error: "File tidak valid. Pastikan mengirim sebagai form-data dengan field 'file'" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // [3] TENTUKAN NAMA FILE
+    let finalFileName;
+    if (fileName && fileName.trim() !== "") {
+      // Gunakan nama custom dari user, bersihkan karakter berbahaya
+      finalFileName = sanitizeFileName(fileName.trim());
+    } else {
+      // Gunakan nama asli file, bersihkan karakter berbahaya
+      finalFileName = sanitizeFileName(file.name || `upload-${Date.now()}`);
+    }
+
+    // Tambahkan path jika ada (misal: "userimage/namafile.jpg")
+    const objectKey = bucketPath ? `${bucketPath}/${finalFileName}` : finalFileName;
+
+    // [4] UPLOAD KE R2
+    await env.R2_BUCKET.put(objectKey, file.body, {
+      httpMetadata: {
+        contentType: file.type || "application/octet-stream",
+      },
+    });
+
+    // [5] RESPONS SUKSES
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: "Upload berhasil!",
+        fileName: finalFileName,
+        objectKey: objectKey,
+        // Public URL tidak langsung diberikan karena butuh konfigurasi domain kustom
+        // Untuk mendapatkan URL: https://pub.<accountid>.r2.dev/<bucket-name>/<objectKey>
+      }),
+      { 
+        status: 200, 
+        headers: { 
+          ...corsHeaders, 
+          "Content-Type": "application/json" 
+        } 
+      }
+    );
+
+  } catch (error) {
+    console.error("Upload error:", error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: `Upload gagal: ${error.message || "Unknown error"}` 
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      }
+    );
+  }
+}
+
+// ===================== FUNGSI BANTUAN =====================
+function sanitizeFileName(fileName) {
+  // Hapus karakter berbahaya dan path traversal, ganti spasi dengan underscore
+  return fileName
+    .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")  // Hanya izinkan karakter aman
+    .replace(/\.\./g, "_")                     // Blok path traversal
+    .substring(0, 200);                        // Batasi panjang nama
+}
