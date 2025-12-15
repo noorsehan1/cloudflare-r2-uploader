@@ -10,15 +10,14 @@ main = "uploadimage.js"
 UPLOAD_SECRET = "alfiyan"
 ALLOWED_ORIGIN = "*"
 
-[bindings]
-type = "r2_bucket"
-name = "R2_BUCKET_FEED"
+[[r2_buckets]]
+binding = "R2_BUCKET_FEED"
 bucket_name = "feed"
 
-type = "r2_bucket"
-name = "R2_BUCKET_USERIMAGE"
+[[r2_buckets]]
+binding = "R2_BUCKET_USERIMAGE"
 bucket_name = "userimage"
 
-type = "r2_bucket"
-name = "R2_BUCKET_STORAGE"
+[[r2_buckets]]
+binding = "R2_BUCKET_STORAGE"
 bucket_name = "storage"
