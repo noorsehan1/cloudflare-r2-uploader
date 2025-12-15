@@ -1,6 +1,6 @@
 // ===================== CLOUDRFARE R2 WORKER =====================
-// Worker menangani upload dan delete file di bucket R2
-// X-Auth-Key = env.UPLOAD_SECRET (contoh: "alfiyan")
+// Worker ini menangani upload dan delete file di bucket R2
+// X-Auth-Key = env.UPLOAD_SECRET
 // CORS sesuai env.ALLOWED_ORIGIN
 
 export default {
@@ -26,7 +26,7 @@ export default {
   },
 };
 
-// ===================== FUNGSI CORS =====================
+// ===================== CORS =====================
 function handleCorsPreflight(env) {
   return new Response(null, {
     headers: {
@@ -38,10 +38,9 @@ function handleCorsPreflight(env) {
   });
 }
 
-// ===================== FUNGSI UPLOAD =====================
+// ===================== UPLOAD =====================
 async function handleUpload(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
-
   try {
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
@@ -57,13 +56,19 @@ async function handleUpload(request, env) {
       return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const r2Bucket = env[bucketName];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Mapping nama bucket client ke binding R2
+    let r2Bucket;
+    switch ((bucketName || "").toLowerCase()) {
+      case "feed": r2Bucket = env.R2_BUCKET_FEED; break;
+      case "userimage": r2Bucket = env.R2_BUCKET_USERIMAGE; break;
+      case "storage": r2Bucket = env.R2_BUCKET_STORAGE; break;
+      default:
+        return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const finalFileName = sanitizeFileName(fileName || file.name || `upload-${Date.now()}`);
-    await r2Bucket.put(finalFileName, file.body, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+    const arrayBuffer = await file.arrayBuffer(); // pastikan file tidak 0 KB
+    await r2Bucket.put(finalFileName, arrayBuffer, { httpMetadata: { contentType: file.type || "application/octet-stream" } });
 
     return new Response(JSON.stringify({ success: true, message: "Upload berhasil!", fileName: finalFileName, bucket: bucketName }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
@@ -72,10 +77,9 @@ async function handleUpload(request, env) {
   }
 }
 
-// ===================== FUNGSI DELETE =====================
+// ===================== DELETE =====================
 async function handleDelete(request, env) {
   const corsHeaders = { "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*" };
-
   try {
     const authHeader = request.headers.get("X-Auth-Key");
     if (!env.UPLOAD_SECRET || authHeader !== env.UPLOAD_SECRET) {
@@ -85,9 +89,14 @@ async function handleDelete(request, env) {
     const data = await request.json();
     const { fileName, bucketName } = data;
 
-    const r2Bucket = env[bucketName];
-    if (!r2Bucket) {
-      return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Mapping nama bucket client ke binding R2
+    let r2Bucket;
+    switch ((bucketName || "").toLowerCase()) {
+      case "feed": r2Bucket = env.R2_BUCKET_FEED; break;
+      case "userimage": r2Bucket = env.R2_BUCKET_USERIMAGE; break;
+      case "storage": r2Bucket = env.R2_BUCKET_STORAGE; break;
+      default:
+        return new Response(JSON.stringify({ success: false, error: "Bucket tidak ditemukan" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     await r2Bucket.delete(fileName);
@@ -99,7 +108,7 @@ async function handleDelete(request, env) {
   }
 }
 
-// ===================== FUNGSI BANTUAN =====================
+// ===================== BANTUAN =====================
 function sanitizeFileName(name) {
   return name
     .replace(/[^a-zA-Z0-9_\-.()[\]]/g, "_")
