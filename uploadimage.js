@@ -2,9 +2,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") {
-      return handleCors(env);
-    }
+    if (request.method === "OPTIONS") return handleCors(env);
 
     if (url.pathname === "/upload" && request.method === "POST") {
       return handleUpload(request, env);
@@ -39,39 +37,26 @@ async function handleUpload(request, env) {
 
   try {
     const auth = request.headers.get("X-Auth-Key");
-    if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Unauthorized"
-      }), { status: 401, headers });
-    }
+    if (auth !== env.UPLOAD_SECRET)
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
 
     const form = await request.formData();
     const file = form.get("file");
     const subFolder = form.get("subFolder") || "";
     const fileName = form.get("fileName");
 
-    if (!(file instanceof File)) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "File tidak valid"
-      }), { status: 400, headers });
-    }
+    if (!(file instanceof File)) return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers });
+    if (!fileName) return new Response(JSON.stringify({ success: false, error: "fileName kosong" }), { status: 400, headers });
 
-    if (!fileName) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "fileName kosong"
-      }), { status: 400, headers });
-    }
-
-    // 🔥 Nama asli tetap
+    // 🔥 Nama asli (tidak diubah)
     const fullPath = subFolder ? `${subFolder}/${fileName}` : fileName;
-
     const buffer = await file.arrayBuffer();
 
+    // Content-Type sesuai file
     await env.R2_BUCKET_USERIMAGE.put(fullPath, buffer, {
-      httpMetadata: { contentType: file.type || "application/octet-stream" }
+      httpMetadata: {
+        contentType: file.type || "application/octet-stream"
+      }
     });
 
     return new Response(JSON.stringify({
@@ -80,8 +65,7 @@ async function handleUpload(request, env) {
     }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers });
   }
 }
 
@@ -94,34 +78,19 @@ async function handleDelete(request, env) {
 
   try {
     const auth = request.headers.get("X-Auth-Key");
-    if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Unauthorized"
-      }), { status: 401, headers });
-    }
+    if (auth !== env.UPLOAD_SECRET)
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
 
-    const { publicUrl } = await request.json();
-    if (!publicUrl) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "publicUrl kosong"
-      }), { status: 400, headers });
-    }
+    const { folder, fileName } = await request.json();
+    if (!fileName) return new Response(JSON.stringify({ success: false, error: "fileName kosong" }), { status: 400, headers });
 
-    const url = new URL(publicUrl);
-    let filePath = decodeURIComponent(url.pathname);
-    if (filePath.startsWith("/")) filePath = filePath.slice(1);
+    const filePath = folder && folder !== "" ? `${folder}/${fileName}` : fileName;
 
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
-    return new Response(JSON.stringify({
-      success: true,
-      deletedPath: filePath
-    }), { status: 200, headers });
+    return new Response(JSON.stringify({ success: true, deletedPath: filePath }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers });
   }
 }
