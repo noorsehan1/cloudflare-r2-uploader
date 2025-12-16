@@ -65,17 +65,13 @@ async function handleUpload(request, env) {
       }), { status: 400, headers });
     }
 
-    // 🔥 NAMA ASLI – TANPA DIUBAH
-    const fullPath = subFolder
-      ? `${subFolder}/${fileName}`
-      : fileName;
+    // 🔥 Nama asli tetap
+    const fullPath = subFolder ? `${subFolder}/${fileName}` : fileName;
 
     const buffer = await file.arrayBuffer();
 
     await env.R2_BUCKET_USERIMAGE.put(fullPath, buffer, {
-      httpMetadata: {
-        contentType: file.type || "application/octet-stream"
-      }
+      httpMetadata: { contentType: file.type || "application/octet-stream" }
     });
 
     return new Response(JSON.stringify({
@@ -84,10 +80,8 @@ async function handleUpload(request, env) {
     }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: e.message
-    }), { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers });
   }
 }
 
@@ -115,13 +109,9 @@ async function handleDelete(request, env) {
       }), { status: 400, headers });
     }
 
-    // 🔥 AMBIL PATH ASLI DARI URL
     const url = new URL(publicUrl);
     let filePath = decodeURIComponent(url.pathname);
-
-    if (filePath.startsWith("/")) {
-      filePath = filePath.slice(1);
-    }
+    if (filePath.startsWith("/")) filePath = filePath.slice(1);
 
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
@@ -131,9 +121,7 @@ async function handleDelete(request, env) {
     }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: e.message
-    }), { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers });
   }
 }
