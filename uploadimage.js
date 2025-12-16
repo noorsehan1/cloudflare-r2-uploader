@@ -2,7 +2,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") return handleCors(env);
+    if (request.method === "OPTIONS") {
+      return handleCors(env);
+    }
 
     if (url.pathname === "/upload" && request.method === "POST") {
       return handleUpload(request, env);
@@ -16,7 +18,7 @@ export default {
   }
 };
 
-// ===================== CORS =====================
+// CORS
 function handleCors(env) {
   return new Response(null, {
     headers: {
@@ -28,7 +30,7 @@ function handleCors(env) {
   });
 }
 
-// ===================== UPLOAD =====================
+// Upload
 async function handleUpload(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -37,39 +39,35 @@ async function handleUpload(request, env) {
 
   try {
     const auth = request.headers.get("X-Auth-Key");
-    if (auth !== env.UPLOAD_SECRET)
+    if (auth !== env.UPLOAD_SECRET) {
       return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
+    }
 
     const form = await request.formData();
     const file = form.get("file");
     const subFolder = form.get("subFolder") || "";
-    const fileName = form.get("fileName");
+    const fileName = form.get("fileName"); // Nama persis, tanpa diubah
 
     if (!(file instanceof File)) return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers });
     if (!fileName) return new Response(JSON.stringify({ success: false, error: "fileName kosong" }), { status: 400, headers });
 
-    // 🔥 Nama asli (tidak diubah)
+    // 🔥 Nama asli persis
     const fullPath = subFolder ? `${subFolder}/${fileName}` : fileName;
+
     const buffer = await file.arrayBuffer();
 
-    // Content-Type sesuai file
     await env.R2_BUCKET_USERIMAGE.put(fullPath, buffer, {
-      httpMetadata: {
-        contentType: file.type || "application/octet-stream"
-      }
+      httpMetadata: { contentType: file.type || "application/octet-stream" }
     });
 
-    return new Response(JSON.stringify({
-      success: true,
-      filePath: fullPath
-    }), { status: 200, headers });
+    return new Response(JSON.stringify({ success: true, filePath: fullPath }), { status: 200, headers });
 
   } catch (e) {
     return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers });
   }
 }
 
-// ===================== DELETE =====================
+// Delete
 async function handleDelete(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -78,13 +76,13 @@ async function handleDelete(request, env) {
 
   try {
     const auth = request.headers.get("X-Auth-Key");
-    if (auth !== env.UPLOAD_SECRET)
-      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
+    if (auth !== env.UPLOAD_SECRET) return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), { status: 401, headers });
 
-    const { folder, fileName } = await request.json();
-    if (!fileName) return new Response(JSON.stringify({ success: false, error: "fileName kosong" }), { status: 400, headers });
+    const { publicUrl } = await request.json();
+    if (!publicUrl) return new Response(JSON.stringify({ success: false, error: "publicUrl kosong" }), { status: 400, headers });
 
-    const filePath = folder && folder !== "" ? `${folder}/${fileName}` : fileName;
+    let filePath = decodeURIComponent(new URL(publicUrl).pathname);
+    if (filePath.startsWith("/")) filePath = filePath.slice(1);
 
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
