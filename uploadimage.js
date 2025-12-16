@@ -2,7 +2,6 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // CORS preflight
     if (request.method === "OPTIONS") {
       return handleCors(env);
     }
@@ -39,7 +38,6 @@ async function handleUpload(request, env) {
   };
 
   try {
-    // AUTH
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
       return new Response(
@@ -53,7 +51,6 @@ async function handleUpload(request, env) {
     const subFolder = form.get("subFolder") || "";
     const fileName = form.get("fileName");
 
-    // VALIDASI FILE (BENAR UNTUK WORKERS)
     if (!(file instanceof File)) {
       return new Response(
         JSON.stringify({ success: false, error: "File tidak valid" }),
@@ -68,20 +65,20 @@ async function handleUpload(request, env) {
       );
     }
 
-    // GABUNG SUBFOLDER + FILENAME
-    const fullPath = sanitize(
-      subFolder ? `${subFolder}/${fileName}` : fileName
-    );
+    // ✅ NAMA FILE ASLI, TIDAK DIUBAH
+    const fullPath = subFolder
+      ? `${subFolder}/${fileName}`
+      : fileName;
 
-    // BACA FILE
-    const buffer = await file.arrayBuffer();
-
-    // UPLOAD KE R2
-    await env.R2_BUCKET_USERIMAGE.put(fullPath, buffer, {
-      httpMetadata: {
-        contentType: file.type || "application/octet-stream"
+    await env.R2_BUCKET_USERIMAGE.put(
+      fullPath,
+      await file.arrayBuffer(),
+      {
+        httpMetadata: {
+          contentType: file.type || "application/octet-stream"
+        }
       }
-    });
+    );
 
     return new Response(
       JSON.stringify({
@@ -109,51 +106,43 @@ async function handleDelete(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "Unauthorized"
-      }), { status: 401, headers });
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers }
+      );
     }
 
     const { publicUrl } = await request.json();
     if (!publicUrl) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: "publicUrl kosong"
-      }), { status: 400, headers });
+      return new Response(
+        JSON.stringify({ success: false, error: "publicUrl kosong" }),
+        { status: 400, headers }
+      );
     }
 
     const url = new URL(publicUrl);
+
+    // contoh: /propil/foto saya @2025 (1).jpg
     let filePath = decodeURIComponent(url.pathname);
 
     if (filePath.startsWith("/")) {
-      filePath = filePath.substring(1);
+      filePath = filePath.slice(1);
     }
 
-    // 🔥 DELETE
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
-    return new Response(JSON.stringify({
-      success: true,
-      deletedPath: filePath
-    }), { status: 200, headers });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        deletedPath: filePath
+      }),
+      { status: 200, headers }
+    );
 
   } catch (e) {
-    return new Response(JSON.stringify({
-      success: false,
-      error: e.message
-    }), { status: 500, headers });
+    return new Response(
+      JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers }
+    );
   }
 }
-
-
-// ===================== UTIL =====================
-function sanitize(name) {
-  return name
-    .replace(/[^a-zA-Z0-9_\-./]/g, "_")
-    .replace(/\.\./g, "_")
-    .substring(0, 200);
-}
-
-
-
