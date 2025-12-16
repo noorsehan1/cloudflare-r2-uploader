@@ -40,10 +40,10 @@ async function handleUpload(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
 
     const form = await request.formData();
@@ -52,47 +52,42 @@ async function handleUpload(request, env) {
     const fileName = form.get("fileName");
 
     if (!(file instanceof File)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "File tidak valid" }),
-        { status: 400, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "File tidak valid"
+      }), { status: 400, headers });
     }
 
     if (!fileName) {
-      return new Response(
-        JSON.stringify({ success: false, error: "fileName kosong" }),
-        { status: 400, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "fileName kosong"
+      }), { status: 400, headers });
     }
 
-    // ✅ NAMA FILE ASLI, TIDAK DIUBAH
+    // 🔥 NAMA ASLI – TANPA DIUBAH
     const fullPath = subFolder
       ? `${subFolder}/${fileName}`
       : fileName;
 
-    await env.R2_BUCKET_USERIMAGE.put(
-      fullPath,
-      await file.arrayBuffer(),
-      {
-        httpMetadata: {
-          contentType: file.type || "application/octet-stream"
-        }
-      }
-    );
+    const buffer = await file.arrayBuffer();
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        filePath: fullPath
-      }),
-      { status: 200, headers }
-    );
+    await env.R2_BUCKET_USERIMAGE.put(fullPath, buffer, {
+      httpMetadata: {
+        contentType: file.type || "application/octet-stream"
+      }
+    });
+
+    return new Response(JSON.stringify({
+      success: true,
+      filePath: fullPath
+    }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
   }
 }
 
@@ -106,23 +101,22 @@ async function handleDelete(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
 
     const { publicUrl } = await request.json();
     if (!publicUrl) {
-      return new Response(
-        JSON.stringify({ success: false, error: "publicUrl kosong" }),
-        { status: 400, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "publicUrl kosong"
+      }), { status: 400, headers });
     }
 
+    // 🔥 AMBIL PATH ASLI DARI URL
     const url = new URL(publicUrl);
-
-    // contoh: /propil/foto saya @2025 (1).jpg
     let filePath = decodeURIComponent(url.pathname);
 
     if (filePath.startsWith("/")) {
@@ -131,18 +125,15 @@ async function handleDelete(request, env) {
 
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        deletedPath: filePath
-      }),
-      { status: 200, headers }
-    );
+    return new Response(JSON.stringify({
+      success: true,
+      deletedPath: filePath
+    }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
   }
 }
