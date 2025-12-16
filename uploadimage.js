@@ -100,7 +100,6 @@ async function handleUpload(request, env) {
 }
 
 // ===================== DELETE =====================
-// ===================== DELETE =====================
 async function handleDelete(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -110,42 +109,40 @@ async function handleDelete(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers }
-      );
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Unauthorized"
+      }), { status: 401, headers });
     }
 
-    const { folder, fileName } = await request.json();
-
-    if (!fileName) {
-      return new Response(
-        JSON.stringify({ success: false, error: "fileName kosong" }),
-        { status: 400, headers }
-      );
+    const { publicUrl } = await request.json();
+    if (!publicUrl) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "publicUrl kosong"
+      }), { status: 400, headers });
     }
 
-    // GABUNG PATH
-    const filePath = sanitize(
-      folder ? `${folder}/${fileName}` : fileName
-    );
+    const url = new URL(publicUrl);
+    let filePath = decodeURIComponent(url.pathname);
 
-    // DELETE DI R2
+    if (filePath.startsWith("/")) {
+      filePath = filePath.substring(1);
+    }
+
+    // 🔥 DELETE
     await env.R2_BUCKET_USERIMAGE.delete(filePath);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        filePath
-      }),
-      { status: 200, headers }
-    );
+    return new Response(JSON.stringify({
+      success: true,
+      deletedPath: filePath
+    }), { status: 200, headers });
 
   } catch (e) {
-    return new Response(
-      JSON.stringify({ success: false, error: e.message }),
-      { status: 500, headers }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: e.message
+    }), { status: 500, headers });
   }
 }
 
@@ -157,5 +154,6 @@ function sanitize(name) {
     .replace(/\.\./g, "_")
     .substring(0, 200);
 }
+
 
 
