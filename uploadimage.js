@@ -2,8 +2,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // ===== CORS PREFLIGHT =====
     if (request.method === "OPTIONS") {
-      return handleCors(env);
+      return handleCors();
     }
 
     if (url.pathname === "/upload" && request.method === "POST") {
@@ -23,7 +24,7 @@ export default {
 };
 
 // ===================== CORS =====================
-function handleCors(env) {
+function handleCors() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -58,16 +59,18 @@ async function handleUpload(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({ success: false }), { status: 401, headers });
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers });
     }
 
     const form = await request.formData();
     const file = form.get("file");
     const subFolder = form.get("subFolder") || "";
-    const fileName = form.get("fileName");
+    const fileName = form.get("fileName"); // NAMA ASLI
 
     if (!(file instanceof File) || !fileName) {
-      return new Response(JSON.stringify({ success: false }), { status: 400, headers });
+      return new Response(JSON.stringify({ success: false, error: "File tidak valid" }),
+        { status: 400, headers });
     }
 
     const fullPath = subFolder ? `${subFolder}/${fileName}` : fileName;
@@ -85,7 +88,8 @@ async function handleUpload(request, env) {
     }), { headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers });
   }
 }
 
@@ -99,10 +103,18 @@ async function handleDelete(request, env) {
   try {
     const auth = request.headers.get("X-Auth-Key");
     if (auth !== env.UPLOAD_SECRET) {
-      return new Response(JSON.stringify({ success: false }), { status: 401, headers });
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers });
     }
 
-    const { publicUrl } = await request.json();
+    const body = await request.json();
+    const publicUrl = body.publicUrl;
+
+    if (!publicUrl) {
+      return new Response(JSON.stringify({ success: false, error: "publicUrl kosong" }),
+        { status: 400, headers });
+    }
+
     let path = decodeURIComponent(new URL(publicUrl).pathname);
     if (path.startsWith("/")) path = path.slice(1);
 
@@ -114,26 +126,29 @@ async function handleDelete(request, env) {
     }), { headers });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers });
+    return new Response(JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers });
   }
 }
 
-// ===================== DOWNLOAD (PREVIEW ENABLED) =====================
+// ===================== DOWNLOAD (FIREBASE STYLE) =====================
 async function handleDownload(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": "*"
   };
 
   const url = new URL(request.url);
+
+  // HANYA BACA ?file= , sig DIABAIKAN
   const filePath = url.searchParams.get("file");
 
   if (!filePath) {
-    return new Response("file missing", { status: 400, headers });
+    return new Response("file parameter missing", { status: 400, headers });
   }
 
   const object = await env.R2_BUCKET_USERIMAGE.get(filePath);
   if (!object) {
-    return new Response("Not Found", { status: 404, headers });
+    return new Response("Object not found", { status: 404, headers });
   }
 
   const contentType =
