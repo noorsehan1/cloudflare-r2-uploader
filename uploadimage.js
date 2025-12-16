@@ -18,7 +18,7 @@ export default {
   }
 };
 
-// CORS
+// ===================== CORS =====================
 function handleCors(env) {
   return new Response(null, {
     headers: {
@@ -30,7 +30,7 @@ function handleCors(env) {
   });
 }
 
-// Upload
+// ===================== UPLOAD =====================
 async function handleUpload(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
@@ -46,13 +46,18 @@ async function handleUpload(request, env) {
     const form = await request.formData();
     const file = form.get("file");
     const subFolder = form.get("subFolder") || "";
-    const fileName = form.get("fileName"); // Nama persis, tanpa diubah
+    const fileName = form.get("fileName"); // Nama persis
 
     if (!(file instanceof File)) return new Response(JSON.stringify({ success: false, error: "File tidak valid" }), { status: 400, headers });
     if (!fileName) return new Response(JSON.stringify({ success: false, error: "fileName kosong" }), { status: 400, headers });
 
-    // 🔥 Nama asli persis
-    const fullPath = subFolder ? `${subFolder}/${fileName}` : fileName;
+    // 🔥 Tambahkan .png jika fileName tidak punya ekstensi
+    let actualFileName = fileName;
+    if (!/\.[a-zA-Z0-9]+$/.test(fileName)) {
+      actualFileName += ".png";
+    }
+
+    const fullPath = subFolder ? `${subFolder}/${actualFileName}` : actualFileName;
 
     const buffer = await file.arrayBuffer();
 
@@ -67,7 +72,7 @@ async function handleUpload(request, env) {
   }
 }
 
-// Delete
+// ===================== DELETE =====================
 async function handleDelete(request, env) {
   const headers = {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
