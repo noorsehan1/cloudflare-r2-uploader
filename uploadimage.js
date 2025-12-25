@@ -19,6 +19,11 @@ export default {
       return handleDownload(request, env);
     }
 
+    // ===== TAMBAHAN: LIST FILES =====
+    if (url.pathname === "/list" && request.method === "POST") {
+      return handleList(request, env);
+    }
+
     return new Response("Not Found", { status: 404 });
   }
 };
@@ -161,4 +166,51 @@ async function handleDownload(request, env) {
       "Cache-Control": "public, max-age=31536000"
     }
   });
+}
+
+// ===================== LIST FILES =====================
+async function handleList(request, env) {
+  const headers = {
+    "Access-Control-Allow-Origin": "*",
+    "Content-Type": "application/json"
+  };
+
+  try {
+    const auth = request.headers.get("X-Auth-Key");
+    if (auth !== env.UPLOAD_SECRET) {
+      return new Response(JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers });
+    }
+
+    const body = await request.json();
+    const prefix = body.prefix || ""; // Subfolder/prefix yang ingin dihitung
+    
+    // Ambil daftar objek dengan prefix tertentu
+    const objects = await env.R2_BUCKET_USERIMAGE.list({
+      prefix: prefix,
+      limit: 1000 // Batas maksimum, bisa disesuaikan
+    });
+
+    // Filter untuk menghitung file saja (bukan "folder" virtual)
+    const fileList = objects.objects || [];
+    
+    // Jika ingin melihat detail setiap file
+    const files = fileList.map(obj => ({
+      key: obj.key,
+      size: obj.size,
+      uploaded: obj.uploaded,
+      etag: obj.etag
+    }));
+
+    return new Response(JSON.stringify({
+      success: true,
+      prefix: prefix,
+      totalFiles: fileList.length,
+      files: files // Opsional: hapus jika tidak butuh detail file
+    }), { headers });
+
+  } catch (e) {
+    return new Response(JSON.stringify({ success: false, error: e.message }),
+      { status: 500, headers });
+  }
 }
